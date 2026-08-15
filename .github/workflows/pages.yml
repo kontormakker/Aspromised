@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - agent/public-release
   workflow_dispatch:
 
 permissions:
@@ -25,14 +24,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-      - name: Rebuild static bundle
+      - name: Rebuild and verify static bundle
         shell: bash
         run: |
-          cat .deploy/site.b64.* > /tmp/site.b64
+          cat \
+            .deploy/site.b64.00 \
+            .deploy/site.b64.01 \
+            .deploy/site.b64.02 \
+            .deploy/site.b64.03 \
+            .deploy/site.b64.04 \
+            .deploy/site.b64.05 \
+            .deploy/site.b64.06 \
+            .deploy/site.b64.07 \
+            .deploy/site.b64.08part0 \
+            .deploy/site.b64.08part1 \
+            .deploy/site.b64.08p2x0 \
+            .deploy/site.b64.08p2x1 \
+            .deploy/site.b64.08p2x2 \
+            .deploy/site.b64.08p2x3 > /tmp/site.b64
           base64 -d /tmp/site.b64 > /tmp/site.zip
+          echo '407ba8c69cf459d575cfc14b8945da297fdb8c457c6bb938b7bf30fb2e047a7e  /tmp/site.zip' | sha256sum -c -
           unzip -q /tmp/site.zip -d .
           test -f site/index.html
           test -f site/src/core.js
+          grep -q 'kontormakker@gmail.com' site/src/config.js
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload static site

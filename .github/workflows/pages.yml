@@ -57,3 +57,34 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Smoke-test public site
+        shell: bash
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          fetch_with_retry() {
+            local url="$1"
+            local output="$2"
+            for attempt in $(seq 1 12); do
+              if curl -fsSL "$url" -o "$output"; then
+                return 0
+              fi
+              sleep 5
+            done
+            echo "Public smoke test failed for $url" >&2
+            return 1
+          }
+
+          base="${PAGE_URL%/}/"
+          fetch_with_retry "$base" /tmp/public-index.html
+          fetch_with_retry "${base}handvaerker-dyrere-end-tilbud/" /tmp/public-problem.html
+          fetch_with_retry "${base}privatliv/" /tmp/public-privacy.html
+          fetch_with_retry "${base}src/config.js" /tmp/public-config.js
+
+          grep -q 'AsPromised' /tmp/public-index.html
+          grep -qi 'håndværker' /tmp/public-problem.html
+          grep -qi 'privatliv' /tmp/public-privacy.html
+          grep -q 'kontormakker@gmail.com' /tmp/public-config.js
+
+          echo "Public Pages smoke test passed: $base"

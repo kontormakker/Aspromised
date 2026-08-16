@@ -50,13 +50,22 @@ jobs:
           grep -q 'kontormakker@gmail.com' site/src/config.js
 
           python3 .deploy/kiss_ui.py site
+          python3 .deploy/action_step.py site
           node --check site/app.js
           node --check site/sw.js
           node --input-type=module -e "import('./site/src/benchmark.js').then(({runDeterministicBenchmark})=>{const r=runDeterministicBenchmark(); if(!r.passed) process.exit(1); console.log('benchmark '+r.passedCount+'/'+r.total)})"
           grep -q '1. Det du blev lovet' site/index.html
           grep -q '2. Det der skete' site/index.html
           grep -q '3. Se forskellen' site/index.html
+          grep -q '4. Hvad vil du gøre?' site/index.html
+          grep -q 'Venlig forespørgsel' site/index.html
+          grep -q 'Dine rettigheder som kunde' site/index.html
           grep -q 'Flere muligheder' site/index.html
+          grep -q 'RIGHTS_SOURCE_CHECKED' site/app.js
+          grep -q 'forbrug.dk/emner/bolig-og-byggeri' site/app.js
+          grep -q 'forbrug.dk/emner/aftaler-og-abonnementer' site/app.js
+          grep -q "aspromised-shell-v1.10.0" site/sw.js
+          ! grep -q "caches.match(e.request).then(r=>r||fetch(e.request))" site/sw.js
           ! grep -q 'lokalt · ingen betalt API' site/index.html
 
           python3 - <<'PY'
@@ -102,6 +111,8 @@ jobs:
 
           base="${PAGE_URL%/}/"
           fetch_with_retry "$base" /tmp/public-index.html
+          fetch_with_retry "${base}app.js" /tmp/public-app.js
+          fetch_with_retry "${base}sw.js" /tmp/public-sw.js
           fetch_with_retry "${base}handvaerker-dyrere-end-tilbud/" /tmp/public-problem.html
           fetch_with_retry "${base}privatliv/" /tmp/public-privacy.html
           fetch_with_retry "${base}src/config.js" /tmp/public-config.js
@@ -113,7 +124,15 @@ jobs:
           grep -q '1. Det du blev lovet' /tmp/public-index.html
           grep -q '2. Det der skete' /tmp/public-index.html
           grep -q '3. Se forskellen' /tmp/public-index.html
+          grep -q '4. Hvad vil du gøre?' /tmp/public-index.html
+          grep -q 'Venlig forespørgsel' /tmp/public-index.html
+          grep -q 'Dine rettigheder som kunde' /tmp/public-index.html
           grep -q 'Flere muligheder' /tmp/public-index.html
+          grep -q 'RIGHTS_SOURCE_CHECKED' /tmp/public-app.js
+          grep -q 'forbrug.dk/emner/bolig-og-byggeri' /tmp/public-app.js
+          grep -q 'forbrug.dk/emner/aftaler-og-abonnementer' /tmp/public-app.js
+          grep -q "aspromised-shell-v1.10.0" /tmp/public-sw.js
+          ! grep -q "caches.match(e.request).then(r=>r||fetch(e.request))" /tmp/public-sw.js
           ! grep -q 'lokalt · ingen betalt API' /tmp/public-index.html
           grep -qi 'håndværker' /tmp/public-problem.html
           grep -qi 'privatliv' /tmp/public-privacy.html

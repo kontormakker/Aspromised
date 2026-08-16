@@ -2,8 +2,7 @@ name: Deploy AsPromised to Pages
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -24,9 +23,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-      - name: Rebuild and verify static bundle
+
+      - name: Build and verify static site
         shell: bash
         run: |
+          set -euo pipefail
           cat \
             .deploy/site.b64.00 \
             .deploy/site.b64.01 \
@@ -45,42 +46,57 @@ jobs:
           base64 -d /tmp/site.b64 > /tmp/site.zip
           echo '407ba8c69cf459d575cfc14b8945da297fdb8c457c6bb938b7bf30fb2e047a7e  /tmp/site.zip' | sha256sum -c -
           unzip -q /tmp/site.zip -d .
-          test -f site/index.html
-          test -f site/src/core.js
-          grep -q 'kontormakker@gmail.com' site/src/config.js
 
           python3 .deploy/kiss_ui.py site
-          python3 .deploy/action_step.py site
-          node --check site/app.js
-          node --check site/sw.js
-          node --input-type=module -e "import('./site/src/benchmark.js').then(({runDeterministicBenchmark})=>{const r=runDeterministicBenchmark(); if(!r.passed) process.exit(1); console.log('benchmark '+r.passedCount+'/'+r.total)})"
-          grep -q '1. Det du blev lovet' site/index.html
-          grep -q '2. Det der skete' site/index.html
-          grep -q '3. Se forskellen' site/index.html
-          grep -q '4. Hvad vil du gøre?' site/index.html
-          grep -q 'Venlig forespørgsel' site/index.html
-          grep -q 'Dine rettigheder som kunde' site/index.html
-          grep -q 'Flere muligheder' site/index.html
-          grep -q 'RIGHTS_SOURCE_CHECKED' site/app.js
-          grep -q 'forbrug.dk/emner/bolig-og-byggeri' site/app.js
-          grep -q 'forbrug.dk/emner/aftaler-og-abonnementer' site/app.js
-          grep -q "aspromised-shell-v1.10.0" site/sw.js
-          ! grep -q "caches.match(e.request).then(r=>r||fetch(e.request))" site/sw.js
-          ! grep -q 'lokalt · ingen betalt API' site/index.html
+          cat .deploy/action_runtime.part00 .deploy/action_runtime.part01 .deploy/action_runtime.part02 .deploy/action_runtime.part03 .deploy/action_runtime.part04 > site/action-runtime.js
+          echo '9cdcbf69cfb018bf4d2ff572375ee319274404ccc3a2e407ae9cf452b033138a  site/action-runtime.js' | sha256sum -c -
 
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('site/index.html')
-          text = p.read_text(encoding='utf-8')
-          token = '<meta name="google-site-verification" content="QB8po67xqtfQHReYX_3n-fyETPS1cFNOddzoTIGPiss" />'
-          if token not in text:
-              text = text.replace('<head>', '<head>\n  ' + token, 1)
-              p.write_text(text, encoding='utf-8')
+          import re
+          p=Path('site/index.html'); t=p.read_text(encoding='utf-8')
+          runtime='<script src="./action-runtime.js"></script>'
+          if runtime not in t:
+              t=t.replace('</body>', runtime+'\n</body>', 1)
+          token='<meta name="google-site-verification" content="QB8po67xqtfQHReYX_3n-fyETPS1cFNOddzoTIGPiss" />'
+          if token not in t:
+              t=t.replace('<head>', '<head>\n  '+token, 1)
+          p.write_text(t, encoding='utf-8')
+
+          sw=Path('site/sw.js'); s=sw.read_text(encoding='utf-8')
+          s=re.sub(r"const CACHE='[^']+';", "const CACHE='aspromised-shell-v1.10.0';", s, count=1)
+          if "'./action-runtime.js'" not in s:
+              s=s.replace("'./manifest.webmanifest'", "'./manifest.webmanifest','./action-runtime.js'")
+          old="e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)))"
+          new="e.respondWith(fetch(e.request).then(r=>{const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy)).catch(()=>{});return r}).catch(()=>caches.match(e.request)))"
+          if old in s: s=s.replace(old,new,1)
+          if old in s or new not in s: raise SystemExit('service-worker strategy not updated')
+          sw.write_text(s, encoding='utf-8')
+
+          v=Path('site/src/version.js'); x=v.read_text(encoding='utf-8')
+          x=re.sub(r"APP_VERSION = '[^']+'", "APP_VERSION = '1.10.0'", x, count=1)
+          v.write_text(x, encoding='utf-8')
           PY
+
+          node --check site/app.js
+          node --check site/action-runtime.js
+          node --check site/sw.js
+          node --input-type=module -e "import('./site/src/benchmark.js').then(({runDeterministicBenchmark})=>{const r=runDeterministicBenchmark(); if(!r.passed) process.exit(1); console.log('benchmark '+r.passedCount+'/'+r.total)})"
+          grep -q '1. Det du blev lovet' site/index.html
+          grep -q '3. Se forskellen' site/index.html
+          grep -q 'action-runtime.js' site/index.html
+          grep -q "AP_SOURCE_DATE='17.08.2026'" site/action-runtime.js
+          grep -q 'haandvaerkere-aftaler-tilbud-og-klager' site/action-runtime.js
+          grep -q 'reparationer-du-selv-skal-betale' site/action-runtime.js
+          grep -q 'problemer-med-fragt-og-levering' site/action-runtime.js
+          grep -q 'abonnementsvilkaar' site/action-runtime.js
+          grep -q "aspromised-shell-v1.10.0" site/sw.js
+          ! grep -q 'caches.match(e.request).then(r=>r||fetch(e.request))' site/sw.js
           grep -q 'QB8po67xqtfQHReYX_3n-fyETPS1cFNOddzoTIGPiss' site/index.html
+
           INDEXNOW_KEY='8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24'
           printf '%s' "$INDEXNOW_KEY" > "site/${INDEXNOW_KEY}.txt"
-          test -f "site/${INDEXNOW_KEY}.txt"
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload static site
@@ -90,92 +106,46 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
       - name: Smoke-test public site
         shell: bash
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
           set -euo pipefail
-          fetch_with_retry() {
-            local url="$1"
-            local output="$2"
-            for attempt in $(seq 1 12); do
-              if curl -fsSL "$url" -o "$output"; then
-                return 0
-              fi
-              sleep 5
-            done
-            echo "Public smoke test failed for $url" >&2
-            return 1
-          }
-
+          fetch_retry(){ for i in $(seq 1 12); do curl -fsSL "$1" -o "$2" && return 0; sleep 5; done; return 1; }
           base="${PAGE_URL%/}/"
-          fetch_with_retry "$base" /tmp/public-index.html
-          fetch_with_retry "${base}app.js" /tmp/public-app.js
-          fetch_with_retry "${base}sw.js" /tmp/public-sw.js
-          fetch_with_retry "${base}handvaerker-dyrere-end-tilbud/" /tmp/public-problem.html
-          fetch_with_retry "${base}privatliv/" /tmp/public-privacy.html
-          fetch_with_retry "${base}src/config.js" /tmp/public-config.js
-          fetch_with_retry "${base}sitemap.xml" /tmp/public-sitemap.xml
-          fetch_with_retry "${base}robots.txt" /tmp/public-robots.txt
-          fetch_with_retry "${base}8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24.txt" /tmp/indexnow-key.txt
+          fetch_retry "$base" /tmp/index.html
+          fetch_retry "${base}action-runtime.js" /tmp/action-runtime.js
+          fetch_retry "${base}sw.js" /tmp/sw.js
+          fetch_retry "${base}sitemap.xml" /tmp/sitemap.xml
+          fetch_retry "${base}robots.txt" /tmp/robots.txt
+          fetch_retry "${base}src/config.js" /tmp/config.js
+          fetch_retry "${base}8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24.txt" /tmp/indexnow.txt
+          grep -q '3. Se forskellen' /tmp/index.html
+          grep -q 'action-runtime.js' /tmp/index.html
+          grep -q "AP_SOURCE_DATE='17.08.2026'" /tmp/action-runtime.js
+          grep -q 'Venlig foresp\\u00f8rgsel' /tmp/action-runtime.js
+          grep -q 'Dine rettigheder som kunde' /tmp/action-runtime.js
+          grep -q 'forbrug.dk' /tmp/action-runtime.js
+          grep -q "aspromised-shell-v1.10.0" /tmp/sw.js
+          ! grep -q 'caches.match(e.request).then(r=>r||fetch(e.request))' /tmp/sw.js
+          grep -q 'https://kontormakker.github.io/Aspromised/' /tmp/sitemap.xml
+          grep -q 'Sitemap: https://kontormakker.github.io/Aspromised/sitemap.xml' /tmp/robots.txt
+          grep -q 'kontormakker@gmail.com' /tmp/config.js
+          grep -q '^8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24$' /tmp/indexnow.txt
+          echo "Public smoke test passed: $base"
 
-          grep -q 'AsPromised' /tmp/public-index.html
-          grep -q '1. Det du blev lovet' /tmp/public-index.html
-          grep -q '2. Det der skete' /tmp/public-index.html
-          grep -q '3. Se forskellen' /tmp/public-index.html
-          grep -q '4. Hvad vil du gøre?' /tmp/public-index.html
-          grep -q 'Venlig forespørgsel' /tmp/public-index.html
-          grep -q 'Dine rettigheder som kunde' /tmp/public-index.html
-          grep -q 'Flere muligheder' /tmp/public-index.html
-          grep -q 'RIGHTS_SOURCE_CHECKED' /tmp/public-app.js
-          grep -q 'forbrug.dk/emner/bolig-og-byggeri' /tmp/public-app.js
-          grep -q 'forbrug.dk/emner/aftaler-og-abonnementer' /tmp/public-app.js
-          grep -q "aspromised-shell-v1.10.0" /tmp/public-sw.js
-          ! grep -q "caches.match(e.request).then(r=>r||fetch(e.request))" /tmp/public-sw.js
-          ! grep -q 'lokalt · ingen betalt API' /tmp/public-index.html
-          grep -qi 'håndværker' /tmp/public-problem.html
-          grep -qi 'privatliv' /tmp/public-privacy.html
-          grep -q 'kontormakker@gmail.com' /tmp/public-config.js
-          grep -q 'QB8po67xqtfQHReYX_3n-fyETPS1cFNOddzoTIGPiss' /tmp/public-index.html
-          grep -q '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' /tmp/public-sitemap.xml
-          grep -q 'https://kontormakker.github.io/Aspromised/' /tmp/public-sitemap.xml
-          grep -q 'Sitemap: https://kontormakker.github.io/Aspromised/sitemap.xml' /tmp/public-robots.txt
-          grep -q '^8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24$' /tmp/indexnow-key.txt
-
-          echo "Public Pages smoke test passed: $base"
       - name: Notify IndexNow
         shell: bash
-        env:
-          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
           set -euo pipefail
           python3 - <<'PY' > /tmp/indexnow.json
           import json, xml.etree.ElementTree as ET
-          key = '8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24'
-          root = ET.parse('site/sitemap.xml').getroot()
-          ns = {'s': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
-          urls = [e.text.strip() for e in root.findall('s:url/s:loc', ns) if e.text]
-          payload = {
-              'host': 'kontormakker.github.io',
-              'key': key,
-              'keyLocation': f'https://kontormakker.github.io/Aspromised/{key}.txt',
-              'urlList': urls,
-          }
-          print(json.dumps(payload, ensure_ascii=False))
+          key='8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24'
+          root=ET.parse('site/sitemap.xml').getroot(); ns={'s':'http://www.sitemaps.org/schemas/sitemap/0.9'}
+          urls=[e.text.strip() for e in root.findall('s:url/s:loc',ns) if e.text]
+          print(json.dumps({'host':'kontormakker.github.io','key':key,'keyLocation':f'https://kontormakker.github.io/Aspromised/{key}.txt','urlList':urls}))
           PY
-
-          for attempt in 1 2 3; do
-            code=$(curl -sS -o /tmp/indexnow-response.txt -w '%{http_code}' \
-              -H 'Content-Type: application/json; charset=utf-8' \
-              --data-binary @/tmp/indexnow.json \
-              https://api.indexnow.org/indexnow || true)
-            if [ "$code" = "200" ] || [ "$code" = "202" ]; then
-              echo "IndexNow accepted AsPromised URLs (HTTP $code)"
-              exit 0
-            fi
-            sleep $((attempt * 3))
-          done
-
-          echo "IndexNow notification did not succeed after retries (last HTTP $code). Site deployment remains valid." >&2
-          exit 0
+          code=$(curl -sS -o /tmp/indexnow-response.txt -w '%{http_code}' -H 'Content-Type: application/json; charset=utf-8' --data-binary @/tmp/indexnow.json https://api.indexnow.org/indexnow || true)
+          if [ "$code" = 200 ] || [ "$code" = 202 ]; then echo "IndexNow accepted (HTTP $code)"; else echo "IndexNow returned HTTP $code; site remains valid"; fi

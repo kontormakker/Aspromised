@@ -58,6 +58,9 @@ jobs:
               p.write_text(text, encoding='utf-8')
           PY
           grep -q 'QB8po67xqtfQHReYX_3n-fyETPS1cFNOddzoTIGPiss' site/index.html
+          INDEXNOW_KEY='8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24'
+          printf '%s' "$INDEXNOW_KEY" > "site/${INDEXNOW_KEY}.txt"
+          test -f "site/${INDEXNOW_KEY}.txt"
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload static site
@@ -93,6 +96,7 @@ jobs:
           fetch_with_retry "${base}src/config.js" /tmp/public-config.js
           fetch_with_retry "${base}sitemap.xml" /tmp/public-sitemap.xml
           fetch_with_retry "${base}robots.txt" /tmp/public-robots.txt
+          fetch_with_retry "${base}8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24.txt" /tmp/indexnow-key.txt
 
           grep -q 'AsPromised' /tmp/public-index.html
           grep -qi 'håndværker' /tmp/public-problem.html
@@ -102,5 +106,41 @@ jobs:
           grep -q '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' /tmp/public-sitemap.xml
           grep -q 'https://kontormakker.github.io/Aspromised/' /tmp/public-sitemap.xml
           grep -q 'Sitemap: https://kontormakker.github.io/Aspromised/sitemap.xml' /tmp/public-robots.txt
+          grep -q '^8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24$' /tmp/indexnow-key.txt
 
           echo "Public Pages smoke test passed: $base"
+      - name: Notify IndexNow
+        shell: bash
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/indexnow.json
+          import json, xml.etree.ElementTree as ET
+          key = '8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24'
+          root = ET.parse('site/sitemap.xml').getroot()
+          ns = {'s': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+          urls = [e.text.strip() for e in root.findall('s:url/s:loc', ns) if e.text]
+          payload = {
+              'host': 'kontormakker.github.io',
+              'key': key,
+              'keyLocation': f'https://kontormakker.github.io/Aspromised/{key}.txt',
+              'urlList': urls,
+          }
+          print(json.dumps(payload, ensure_ascii=False))
+          PY
+
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o /tmp/indexnow-response.txt -w '%{http_code}' \
+              -H 'Content-Type: application/json; charset=utf-8' \
+              --data-binary @/tmp/indexnow.json \
+              https://api.indexnow.org/indexnow || true)
+            if [ "$code" = "200" ] || [ "$code" = "202" ]; then
+              echo "IndexNow accepted AsPromised URLs (HTTP $code)"
+              exit 0
+            fi
+            sleep $((attempt * 3))
+          done
+
+          echo "IndexNow notification did not succeed after retries (last HTTP $code). Site deployment remains valid." >&2
+          exit 0

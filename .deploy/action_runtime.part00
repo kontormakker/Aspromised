@@ -1,0 +1,14 @@
+const AP_SOURCE_DATE='17.08.2026';
+const AP_GUIDES={
+ handvaerker:{label:'H\u00e5ndv\u00e6rker',url:'https://forbrug.dk/emner/bolig-og-byggeri/haandvaerkere-aftaler-tilbud-og-klager'},
+ vaerksted:{label:'V\u00e6rksted',url:'https://forbrug.dk/emner/biler/autovaerksteder-og-bilsyn'},
+ webshop:{label:'Webshop',url:'https://forbrug.dk/emner/nethandel-og-digitale-tjenester/sikker-handel-paa-nettet/problemer-med-fragt-og-levering'},
+ abonnement:{label:'Abonnement',url:'https://forbrug.dk/emner/aftaler-og-abonnementer/abonnementsvilkaar'},
+ andet:{label:'Andet',url:''}
+};
+const $a=id=>document.getElementById(id);
+function esc(s){const d=document.createElement('div');d.textContent=s??'';return d.innerHTML}
+function caseText(){return [($a('caseTitle')?.value||''),($a('beforeText')?.value||''),($a('afterText')?.value||''),($a('findings')?.innerText||'')].join(' ').toLowerCase()}
+function detectType(){const t=caseText(),s={handvaerker:0,vaerksted:0,webshop:0,abonnement:0};[['handvaerker',['h\u00e5ndv\u00e6rker','t\u00f8mrer','murer','elektriker','vvs','byggeri','renovering','till\u00e6gsarbejde']],['vaerksted',['autov\u00e6rksted','v\u00e6rksted','mekaniker','bilreparation','reservedele']],['webshop',['webshop','ordrebekr\u00e6ftelse','pakke','forsendelse','levering','ordre']],['abonnement',['abonnement','medlemskab','m\u00e5nedligt','pris\u00e6ndring','prisstigning','opsigelse']]].forEach(([k,ws])=>ws.forEach(w=>{if(t.includes(w))s[k]+=1}));const r=Object.entries(s).sort((a,b)=>b[1]-a[1]);return r[0][1]>=1?r[0][0]:'andet'}
+function priceType(){const t=caseText();if(/maksimumpris|maxpris/.test(t))return'max';if(/overslag|prisoverslag|estimat/.test(t))return'estimate';if(/fast pris|fastpris|tilbud/.test(t))return'offer';if(/efter regning|timepris|timel\u00f8n/.test(t))return'time';return'unknown'}
+function quotes(){return [...document.querySelectorAll('#findings .finding')].slice(0,3).map(el=>{const q=el.querySelectorAll('.quote');const clean=x=>(x?.innerText||'').split('\n').slice(1).join(' ').trim();return{before:clean(q[0]),after:clean(q[1])}}).filter(x=>x.before)}

@@ -48,6 +48,18 @@ jobs:
           test -f site/index.html
           test -f site/src/core.js
           grep -q 'kontormakker@gmail.com' site/src/config.js
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('site/index.html')
+          html = path.read_text(encoding='utf-8')
+          tag = '<meta name="google-site-verification" content="QB8po67xqtfQHReYX_3n-fyETPS1cFNOddzoTIGPiss" />'
+          if tag not in html:
+              if '</head>' not in html:
+                  raise SystemExit('Missing </head> in site/index.html')
+              html = html.replace('</head>', f'  {tag}\n</head>', 1)
+              path.write_text(html, encoding='utf-8')
+          PY
+          grep -q 'QB8po67xqtfQHReYX_3n-fyETPS1cFNOddzoTIGPiss' site/index.html
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload static site
@@ -83,6 +95,7 @@ jobs:
           fetch_with_retry "${base}src/config.js" /tmp/public-config.js
 
           grep -q 'AsPromised' /tmp/public-index.html
+          grep -q 'QB8po67xqtfQHReYX_3n-fyETPS1cFNOddzoTIGPiss' /tmp/public-index.html
           grep -qi 'håndværker' /tmp/public-problem.html
           grep -qi 'privatliv' /tmp/public-privacy.html
           grep -q 'kontormakker@gmail.com' /tmp/public-config.js

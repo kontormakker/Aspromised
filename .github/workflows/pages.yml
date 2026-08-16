@@ -48,6 +48,17 @@ jobs:
           test -f site/index.html
           test -f site/src/core.js
           grep -q 'kontormakker@gmail.com' site/src/config.js
+
+          python3 .deploy/kiss_ui.py site
+          node --check site/app.js
+          node --check site/sw.js
+          node --input-type=module -e "import('./site/src/benchmark.js').then(({runDeterministicBenchmark})=>{const r=runDeterministicBenchmark(); if(!r.passed) process.exit(1); console.log('benchmark '+r.passedCount+'/'+r.total)})"
+          grep -q '1. Det du blev lovet' site/index.html
+          grep -q '2. Det der skete' site/index.html
+          grep -q '3. Se forskellen' site/index.html
+          grep -q 'Flere muligheder' site/index.html
+          ! grep -q 'lokalt · ingen betalt API' site/index.html
+
           python3 - <<'PY'
           from pathlib import Path
           p = Path('site/index.html')
@@ -99,6 +110,11 @@ jobs:
           fetch_with_retry "${base}8e7f6d1c0a4b9f2e7d3c6a1b5e8f0d24.txt" /tmp/indexnow-key.txt
 
           grep -q 'AsPromised' /tmp/public-index.html
+          grep -q '1. Det du blev lovet' /tmp/public-index.html
+          grep -q '2. Det der skete' /tmp/public-index.html
+          grep -q '3. Se forskellen' /tmp/public-index.html
+          grep -q 'Flere muligheder' /tmp/public-index.html
+          ! grep -q 'lokalt · ingen betalt API' /tmp/public-index.html
           grep -qi 'håndværker' /tmp/public-problem.html
           grep -qi 'privatliv' /tmp/public-privacy.html
           grep -q 'kontormakker@gmail.com' /tmp/public-config.js

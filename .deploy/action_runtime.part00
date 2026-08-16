@@ -1,7 +1,7 @@
 const AP_SOURCE_DATE='17.08.2026';
 const AP_GUIDES={
  handvaerker:{label:'H\u00e5ndv\u00e6rker',url:'https://forbrug.dk/emner/bolig-og-byggeri/haandvaerkere-aftaler-tilbud-og-klager'},
- vaerksted:{label:'V\u00e6rksted',url:'https://forbrug.dk/emner/biler/autovaerksteder-og-bilsyn'},
+ vaerksted:{label:'V\u00e6rksted',url:'https://forbrug.dk/regler/opslagsvaerk-forbrugerleksikon/reparationer-du-selv-skal-betale'},
  webshop:{label:'Webshop',url:'https://forbrug.dk/emner/nethandel-og-digitale-tjenester/sikker-handel-paa-nettet/problemer-med-fragt-og-levering'},
  abonnement:{label:'Abonnement',url:'https://forbrug.dk/emner/aftaler-og-abonnementer/abonnementsvilkaar'},
  andet:{label:'Andet',url:''}

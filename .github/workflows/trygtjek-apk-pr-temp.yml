@@ -1,17 +1,13 @@
-name: Temporary TrygTjek APK PR Build
+name: Build TrygTjek Android APK
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: '*/5 * * * *'
 
 permissions:
   contents: write
 
 concurrency:
-  group: trygtjek-apk-temp
+  group: trygtjek-apk-manual
   cancel-in-progress: false
 
 jobs:

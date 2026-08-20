@@ -1,19 +1,29 @@
 name: Temporary TrygTjek APK PR Build
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '*/5 * * * *'
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: trygtjek-apk-temp
+  cancel-in-progress: false
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - name: Checkout PR source
+      - name: Checkout TrygTjek source payload
         uses: actions/checkout@v4
+        with:
+          ref: trygtjek-apk-source
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -46,7 +56,31 @@ jobs:
         working-directory: ${{ runner.temp }}/trygtjek-android-v0.1
         run: gradle --no-daemon --stacktrace :app:assembleDebug
 
-      - name: Upload APK
+      - name: Validate APK
+        shell: bash
+        run: |
+          APK="$RUNNER_TEMP/trygtjek-android-v0.1/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          sha256sum "$APK"
+
+      - name: Publish temporary APK branch
+        shell: bash
+        run: |
+          APK="$RUNNER_TEMP/trygtjek-android-v0.1/app/build/outputs/apk/debug/app-debug.apk"
+          git config user.name "TrygTjek Build Bot"
+          git config user.email "actions@github.com"
+          git checkout --orphan trygtjek-apk-output-work
+          git rm -rf . >/dev/null 2>&1 || true
+          mkdir -p build-output
+          cp "$APK" build-output/TrygTjek-v0.1-debug.apk
+          sha256sum build-output/TrygTjek-v0.1-debug.apk > build-output/SHA256.txt
+          printf 'TrygTjek Android V0.1 debug build\n' > build-output/README.txt
+          git add build-output
+          git commit -m "Publish temporary TrygTjek debug APK"
+          git push --force origin HEAD:trygtjek-apk-output
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: TrygTjek-v0.1-debug-apk

@@ -43,7 +43,7 @@ jobs:
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/trygtjek-report"
           {
-            cat .trygtjek-build/part*.b64 | tr -d '\n\r ' | base64 -d > /tmp/trygtjek.zip
+            cat .trygtjek-build/part0[1-6].b64 | tr -d '\n\r ' | base64 -d > /tmp/trygtjek.zip
             echo "6a1ca3e9130d4c108659e1cb79d8672d56f7565e459603703744bc90b8632934  /tmp/trygtjek.zip" | sha256sum -c -
             unzip -q /tmp/trygtjek.zip -d "$RUNNER_TEMP"
             BUILD="$RUNNER_TEMP/trygtjek-android-v0.2/app/build.gradle.kts"
@@ -72,17 +72,41 @@ jobs:
           set -o pipefail
           gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee "$RUNNER_TEMP/trygtjek-report/build.log"
 
-      - name: Validate APK
-        id: validate
+      - name: Sign beta APK with stable test key
+        id: sign
         if: steps.build.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
-          APK="$RUNNER_TEMP/trygtjek-android-v0.2/app/build/outputs/apk/debug/app-debug.apk"
+          REPORT="$RUNNER_TEMP/trygtjek-report"
+          KS="$RUNNER_TEMP/trygtjek-beta-test.keystore"
+          INPUT="$RUNNER_TEMP/trygtjek-android-v0.2/app/build/outputs/apk/debug/app-debug.apk"
+          OUTPUT="$REPORT/TrygTjek-v0.2-debug.apk"
+          {
+            base64 -d .trygtjek-build/test-signing-keystore.b64 > "$KS"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+              --ks "$KS" \
+              --ks-key-alias trygtjekbeta \
+              --ks-pass pass:'TrygTjekBeta2026!' \
+              --key-pass pass:'TrygTjekBeta2026!' \
+              --out "$OUTPUT" \
+              "$INPUT"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$OUTPUT"
+          } 2>&1 | tee "$REPORT/sign.log"
+
+      - name: Validate APK
+        id: validate
+        if: steps.sign.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          APK="$RUNNER_TEMP/trygtjek-report/TrygTjek-v0.2-debug.apk"
           {
             test -s "$APK"
             unzip -t "$APK" >/dev/null
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK"
             sha256sum "$APK"
           } 2>&1 | tee "$RUNNER_TEMP/trygtjek-report/validate.log"
 
@@ -98,13 +122,13 @@ jobs:
             echo "restore=${{ steps.restore.outcome }}"
             echo "sdk=${{ steps.sdk.outcome }}"
             echo "build=${{ steps.build.outcome }}"
+            echo "sign=${{ steps.sign.outcome }}"
             echo "validate=${{ steps.validate.outcome }}"
           } > "$REPORT/STATUS.txt"
 
-          APK="$RUNNER_TEMP/trygtjek-android-v0.2/app/build/outputs/apk/debug/app-debug.apk"
+          APK="$REPORT/TrygTjek-v0.2-debug.apk"
           if [ -s "$APK" ]; then
-            cp "$APK" "$REPORT/TrygTjek-v0.2-debug.apk"
-            sha256sum "$REPORT/TrygTjek-v0.2-debug.apk" > "$REPORT/SHA256.txt"
+            sha256sum "$APK" > "$REPORT/SHA256.txt"
           fi
 
           git config user.name "TrygTjek Build Bot"

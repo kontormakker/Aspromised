@@ -35,51 +35,94 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
-        shell: bash
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools"
-
       - name: Restore and verify TrygTjek source
+        id: restore
+        continue-on-error: true
         shell: bash
         run: |
-          cat .trygtjek-build/part*.b64 | tr -d '\n\r ' | base64 -d > /tmp/trygtjek.zip
-          echo "9491d3fe8f7f66b5c37cef9822752d0d795d5aff0177f3a19302b64d1f8a29ec  /tmp/trygtjek.zip" | sha256sum -c -
-          unzip -q /tmp/trygtjek.zip -d "$RUNNER_TEMP"
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/trygtjek-report"
+          {
+            cat .trygtjek-build/part*.b64 | tr -d '\n\r ' | base64 -d > /tmp/trygtjek.zip
+            echo "9491d3fe8f7f66b5c37cef9822752d0d795d5aff0177f3a19302b64d1f8a29ec  /tmp/trygtjek.zip" | sha256sum -c -
+            unzip -q /tmp/trygtjek.zip -d "$RUNNER_TEMP"
+          } 2>&1 | tee "$RUNNER_TEMP/trygtjek-report/restore.log"
+
+      - name: Install Android SDK packages
+        id: sdk
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/trygtjek-report"
+          {
+            yes | sdkmanager --licenses >/dev/null || true
+            sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools"
+          } 2>&1 | tee "$RUNNER_TEMP/trygtjek-report/sdk.log"
 
       - name: Build debug APK
+        id: build
+        if: steps.restore.outcome == 'success' && steps.sdk.outcome == 'success'
+        continue-on-error: true
+        shell: bash
         working-directory: ${{ runner.temp }}/trygtjek-android-v0.1
-        run: gradle --no-daemon --stacktrace :app:assembleDebug
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee "$RUNNER_TEMP/trygtjek-report/build.log"
 
       - name: Validate APK
+        id: validate
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
+          set -o pipefail
           APK="$RUNNER_TEMP/trygtjek-android-v0.1/app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
-          unzip -t "$APK" >/dev/null
-          sha256sum "$APK"
+          {
+            test -s "$APK"
+            unzip -t "$APK" >/dev/null
+            sha256sum "$APK"
+          } 2>&1 | tee "$RUNNER_TEMP/trygtjek-report/validate.log"
 
-      - name: Publish temporary APK branch
+      - name: Publish APK or failure report
+        if: always()
         shell: bash
         run: |
+          REPORT="$RUNNER_TEMP/trygtjek-report"
+          mkdir -p "$REPORT"
+          {
+            echo "restore=${{ steps.restore.outcome }}"
+            echo "sdk=${{ steps.sdk.outcome }}"
+            echo "build=${{ steps.build.outcome }}"
+            echo "validate=${{ steps.validate.outcome }}"
+          } > "$REPORT/STATUS.txt"
+
           APK="$RUNNER_TEMP/trygtjek-android-v0.1/app/build/outputs/apk/debug/app-debug.apk"
+          if [ -s "$APK" ]; then
+            cp "$APK" "$REPORT/TrygTjek-v0.1-debug.apk"
+            sha256sum "$REPORT/TrygTjek-v0.1-debug.apk" > "$REPORT/SHA256.txt"
+          fi
+
           git config user.name "TrygTjek Build Bot"
           git config user.email "actions@github.com"
           git checkout --orphan trygtjek-apk-output-work
           git rm -rf . >/dev/null 2>&1 || true
           mkdir -p build-output
-          cp "$APK" build-output/TrygTjek-v0.1-debug.apk
-          sha256sum build-output/TrygTjek-v0.1-debug.apk > build-output/SHA256.txt
-          printf 'TrygTjek Android V0.1 debug build\n' > build-output/README.txt
+          cp -a "$REPORT"/. build-output/
           git add build-output
-          git commit -m "Publish temporary TrygTjek debug APK"
+          git commit -m "Publish TrygTjek APK build result"
           git push --force origin HEAD:trygtjek-apk-output
 
       - name: Upload APK artifact
+        if: steps.validate.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: TrygTjek-v0.1-debug-apk
-          path: ${{ runner.temp }}/trygtjek-android-v0.1/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ runner.temp }}/trygtjek-report/TrygTjek-v0.1-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Fail workflow if APK was not built
+        if: steps.validate.outcome != 'success'
+        shell: bash
+        run: exit 1

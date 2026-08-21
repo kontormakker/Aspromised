@@ -35,7 +35,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Restore and verify TrygTjek source
+      - name: Restore and patch TrygTjek source
         id: restore
         continue-on-error: true
         shell: bash
@@ -46,8 +46,12 @@ jobs:
             cat .trygtjek-build/part*.b64 | tr -d '\n\r ' | base64 -d > /tmp/trygtjek.zip
             echo "9491d3fe8f7f66b5c37cef9822752d0d795d5aff0177f3a19302b64d1f8a29ec  /tmp/trygtjek.zip" | sha256sum -c -
             unzip -q /tmp/trygtjek.zip -d "$RUNNER_TEMP"
-            sed -i 's/compileSdk = 37/compileSdk = 36/' "$RUNNER_TEMP/trygtjek-android-v0.1/app/build.gradle.kts"
-            grep -n 'compileSdk = 36' "$RUNNER_TEMP/trygtjek-android-v0.1/app/build.gradle.kts"
+            BUILD="$RUNNER_TEMP/trygtjek-android-v0.1/app/build.gradle.kts"
+            sed -i 's/compileSdk = 37/compileSdk = 36/' "$BUILD"
+            sed -i 's/compose-bom:2026.08.00/compose-bom:2025.08.00/' "$BUILD"
+            sed -i 's/androidx.core:core-ktx:1.19.0/androidx.core:core-ktx:1.17.0/' "$BUILD"
+            sed -i 's/androidx.activity:activity-compose:1.13.0/androidx.activity:activity-compose:1.11.0/' "$BUILD"
+            grep -nE 'compileSdk|compose-bom|core-ktx|activity-compose' "$BUILD"
           } 2>&1 | tee "$RUNNER_TEMP/trygtjek-report/restore.log"
 
       - name: Install Android SDK packages

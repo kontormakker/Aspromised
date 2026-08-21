@@ -46,6 +46,8 @@ jobs:
             cat .trygtjek-build/part*.b64 | tr -d '\n\r ' | base64 -d > /tmp/trygtjek.zip
             echo "9491d3fe8f7f66b5c37cef9822752d0d795d5aff0177f3a19302b64d1f8a29ec  /tmp/trygtjek.zip" | sha256sum -c -
             unzip -q /tmp/trygtjek.zip -d "$RUNNER_TEMP"
+            sed -i 's/compileSdk = 37/compileSdk = 36/' "$RUNNER_TEMP/trygtjek-android-v0.1/app/build.gradle.kts"
+            grep -n 'compileSdk = 36' "$RUNNER_TEMP/trygtjek-android-v0.1/app/build.gradle.kts"
           } 2>&1 | tee "$RUNNER_TEMP/trygtjek-report/restore.log"
 
       - name: Install Android SDK packages
@@ -57,7 +59,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/trygtjek-report"
           {
             yes | sdkmanager --licenses >/dev/null || true
-            sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools"
+            sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
           } 2>&1 | tee "$RUNNER_TEMP/trygtjek-report/sdk.log"
 
       - name: Build debug APK

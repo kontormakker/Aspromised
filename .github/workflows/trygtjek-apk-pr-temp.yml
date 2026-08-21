@@ -35,7 +35,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Restore and patch TrygTjek source
+      - name: Restore and verify TrygTjek V0.2 source
         id: restore
         continue-on-error: true
         shell: bash
@@ -44,14 +44,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/trygtjek-report"
           {
             cat .trygtjek-build/part*.b64 | tr -d '\n\r ' | base64 -d > /tmp/trygtjek.zip
-            echo "9491d3fe8f7f66b5c37cef9822752d0d795d5aff0177f3a19302b64d1f8a29ec  /tmp/trygtjek.zip" | sha256sum -c -
+            echo "6a1ca3e9130d4c108659e1cb79d8672d56f7565e459603703744bc90b8632934  /tmp/trygtjek.zip" | sha256sum -c -
             unzip -q /tmp/trygtjek.zip -d "$RUNNER_TEMP"
-            BUILD="$RUNNER_TEMP/trygtjek-android-v0.1/app/build.gradle.kts"
-            sed -i 's/compileSdk = 37/compileSdk = 36/' "$BUILD"
-            sed -i 's/compose-bom:2026.08.00/compose-bom:2025.08.00/' "$BUILD"
-            sed -i 's/androidx.core:core-ktx:1.19.0/androidx.core:core-ktx:1.17.0/' "$BUILD"
-            sed -i 's/androidx.activity:activity-compose:1.13.0/androidx.activity:activity-compose:1.11.0/' "$BUILD"
-            grep -nE 'compileSdk|compose-bom|core-ktx|activity-compose' "$BUILD"
+            BUILD="$RUNNER_TEMP/trygtjek-android-v0.2/app/build.gradle.kts"
+            grep -nE 'compileSdk|targetSdk|versionCode|versionName|compose-bom|core-ktx|activity-compose' "$BUILD"
           } 2>&1 | tee "$RUNNER_TEMP/trygtjek-report/restore.log"
 
       - name: Install Android SDK packages
@@ -71,7 +67,7 @@ jobs:
         if: steps.restore.outcome == 'success' && steps.sdk.outcome == 'success'
         continue-on-error: true
         shell: bash
-        working-directory: ${{ runner.temp }}/trygtjek-android-v0.1
+        working-directory: ${{ runner.temp }}/trygtjek-android-v0.2
         run: |
           set -o pipefail
           gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee "$RUNNER_TEMP/trygtjek-report/build.log"
@@ -83,7 +79,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          APK="$RUNNER_TEMP/trygtjek-android-v0.1/app/build/outputs/apk/debug/app-debug.apk"
+          APK="$RUNNER_TEMP/trygtjek-android-v0.2/app/build/outputs/apk/debug/app-debug.apk"
           {
             test -s "$APK"
             unzip -t "$APK" >/dev/null
@@ -96,17 +92,19 @@ jobs:
         run: |
           REPORT="$RUNNER_TEMP/trygtjek-report"
           mkdir -p "$REPORT"
+          echo "$GITHUB_RUN_ID" > "$REPORT/RUN_ID.txt"
           {
+            echo "version=0.2.0"
             echo "restore=${{ steps.restore.outcome }}"
             echo "sdk=${{ steps.sdk.outcome }}"
             echo "build=${{ steps.build.outcome }}"
             echo "validate=${{ steps.validate.outcome }}"
           } > "$REPORT/STATUS.txt"
 
-          APK="$RUNNER_TEMP/trygtjek-android-v0.1/app/build/outputs/apk/debug/app-debug.apk"
+          APK="$RUNNER_TEMP/trygtjek-android-v0.2/app/build/outputs/apk/debug/app-debug.apk"
           if [ -s "$APK" ]; then
-            cp "$APK" "$REPORT/TrygTjek-v0.1-debug.apk"
-            sha256sum "$REPORT/TrygTjek-v0.1-debug.apk" > "$REPORT/SHA256.txt"
+            cp "$APK" "$REPORT/TrygTjek-v0.2-debug.apk"
+            sha256sum "$REPORT/TrygTjek-v0.2-debug.apk" > "$REPORT/SHA256.txt"
           fi
 
           git config user.name "TrygTjek Build Bot"
@@ -116,15 +114,15 @@ jobs:
           mkdir -p build-output
           cp -a "$REPORT"/. build-output/
           git add build-output
-          git commit -m "Publish TrygTjek APK build result"
+          git commit -m "Publish TrygTjek V0.2 APK build result"
           git push --force origin HEAD:trygtjek-apk-output
 
       - name: Upload APK artifact
         if: steps.validate.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: TrygTjek-v0.1-debug-apk
-          path: ${{ runner.temp }}/trygtjek-report/TrygTjek-v0.1-debug.apk
+          name: TrygTjek-v0.2-debug-apk
+          path: ${{ runner.temp }}/trygtjek-report/TrygTjek-v0.2-debug.apk
           if-no-files-found: error
           retention-days: 7
 
